@@ -225,6 +225,14 @@
         // --- Firebase Initialization ---
         async function initializeFirebase() {
             try {
+                // Check if firebaseConfig is defined and not empty
+                if (Object.keys(firebaseConfig).length === 0) {
+                    console.error("Firebase config is empty or not defined.");
+                    showMessage("Failed to initialize app: Firebase configuration is missing.", 'error');
+                    hideLoading();
+                    return;
+                }
+
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -234,7 +242,7 @@
                     if (user) {
                         userId = user.uid;
                         await fetchOrCreateUserProfile();
-                        await setupRealtimeListeners();
+                        // Realtime listeners are set up after profile is fetched
                     } else {
                         try {
                             if (initialAuthToken) {
@@ -277,6 +285,8 @@
                 }
                 renderView(currentView); // Re-render current view with updated profile
                 hideLoading();
+                // Setup listeners only after currentUserProfile is confirmed
+                await setupRealtimeListeners();
             }, (error) => {
                 console.error("Error fetching user profile:", error);
                 showMessage(`Failed to load profile: ${error.message}`, 'error');
@@ -298,6 +308,7 @@
             });
 
             // Friends Listener (for friend profiles)
+            // Ensure currentUserProfile.friends is an array before using 'in' query
             if (currentUserProfile && currentUserProfile.friends && currentUserProfile.friends.length > 0) {
                 const friendsQuery = query(
                     collection(db, `artifacts/${appId}/public/data/users`),
@@ -311,7 +322,7 @@
                     showMessage(`Failed to load friends: ${error.message}`, 'error');
                 });
             } else {
-                friends = [];
+                friends = []; // Ensure it's empty if no friends
                 if (currentView === 'friends' || currentView === 'leaderboard' || currentView === 'activityFeed') renderView(currentView);
             }
 
@@ -338,7 +349,7 @@
 
             // Activity Feed Listener
             const activityFeedCollectionRef = collection(db, `artifacts/${appId}/public/data/activityFeed`);
-            const friendAndSelfIds = [...friends.map(f => f.userId), userId].filter(Boolean);
+            const friendAndSelfIds = [...(currentUserProfile ? currentUserProfile.friends : []), userId].filter(Boolean);
             if (friendAndSelfIds.length > 0) {
                 const activityQuery = query(activityFeedCollectionRef, where("userId", "in", friendAndSelfIds));
                 onSnapshot(activityQuery, (snapshot) => {
