@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ranked Workout App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        /* Custom styles to ensure responsiveness and aesthetics, mimicking Tailwind */
+        .container {
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .flex-center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .grid-cols-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .sm\:grid-cols-4 {
+            /* This will be handled by media queries or direct CSS if not using Tailwind's JIT */
+        }
+        @media (min-width: 640px) {
+            .sm\:grid-cols-4 {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+            .sm\:flex-row {
+                flex-direction: row;
+            }
+            .sm\:mb-0 {
+                margin-bottom: 0;
+            }
+            .sm\:p-6 {
+                padding: 1.5rem;
+            }
+            .sm\:p-8 {
+                padding: 2rem;
+            }
+        }
+        @media (min-width: 768px) {
+            .md\:grid-cols-2 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        @media (min-width: 1024px) {
+            .lg\:grid-cols-3 {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            .lg\:p-8 {
+                padding: 2rem;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-900 to-gray-700 font-inter flex flex-col text-white">
+
+    <!-- Message Box Container -->
+    <div id="message-box-container" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <h3 id="message-box-title" class="text-lg font-semibold mb-4"></h3>
+            <p id="message-box-content" class="text-gray-700 mb-6"></p>
+            <div class="flex justify-end">
+                <button id="message-box-close" class="px-4 py-2 rounded-md text-white font-medium hover:opacity-90 transition-opacity"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="min-h-screen bg-gradient-to-br from-gray-900 to-gray-700 flex items-center justify-center font-inter text-white hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+    </div>
+
+    <!-- Header/Navigation -->
+    <header class="bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg p-4 text-white">
+        <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center">
+            <h1 class="text-3xl font-bold mb-2 sm:mb-0">💪 Ranked Workout</h1>
+            <nav class="flex space-x-4">
+                <button id="nav-profile" class="px-4 py-2 rounded-full font-medium transition-all duration-300 text-white hover:bg-blue-700 hover:shadow-md">
+                    Profile
+                </button>
+                <button id="nav-friends" class="px-4 py-2 rounded-full font-medium transition-all duration-300 text-white hover:bg-blue-700 hover:shadow-md">
+                    Friends
+                </button>
+                <button id="nav-workouts" class="px-4 py-2 rounded-full font-medium transition-all duration-300 text-white hover:bg-blue-700 hover:shadow-md">
+                    Workouts
+                </button>
+                <button id="nav-leaderboard" class="px-4 py-2 rounded-full font-medium transition-all duration-300 text-white hover:bg-blue-700 hover:shadow-md">
+                    Leaderboard
+                </button>
+                <button id="nav-activityFeed" class="px-4 py-2 rounded-full font-medium transition-all duration-300 text-white hover:bg-blue-700 hover:shadow-md">
+                    Activity Feed
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="flex-grow container mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- Content will be dynamically loaded here -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white p-4 text-center text-sm mt-8">
+        <p>&copy; <span id="current-year"></span> Ranked Workout App. All rights reserved.</p>
+    </footer>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, addDoc, serverTimestamp, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+
+        // Ensure these global variables are defined by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let storage;
+        let userId = null;
+        let currentUserProfile = null;
+        let friends = [];
+        let userWorkouts = [];
+        let personalRecords = {};
+        let allUsersData = [];
+        let incomingFriendRequests = [];
+        let outgoingFriendRequests = [];
+        let activityFeed = [];
+        let currentView = 'profile';
+        let showPlanetSelection = false;
+
+        const DOM = {
+            mainContent: document.getElementById('main-content'),
+            navProfile: document.getElementById('nav-profile'),
+            navFriends: document.getElementById('nav-friends'),
+            navWorkouts: document.getElementById('nav-workouts'),
+            navLeaderboard: document.getElementById('nav-leaderboard'),
+            navActivityFeed: document.getElementById('nav-activityFeed'),
+            messageBoxContainer: document.getElementById('message-box-container'),
+            messageBoxTitle: document.getElementById('message-box-title'),
+            messageBoxContent: document.getElementById('message-box-content'),
+            messageBoxClose: document.getElementById('message-box-close'),
+            loadingSpinner: document.getElementById('loading-spinner'),
+            currentYear: document.getElementById('current-year')
+        };
+
+        // Pre-made planet and moon image URLs
+        const planetImages = [
+            'https://photojournal.jpl.nasa.gov/jpeg/PIA15161.jpg', // Mercury
+            'https://science.nasa.gov/wp-content/uploads/2023/02/venus-gettyimages-1191062973-16x9-1.jpg', // Venus
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/The_Earth_seen_from_Apollo_17.jpg/250px-The_Earth_seen_from_Apollo_17.jpg', // Earth
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/FullMoon2010.jpg/250px-FullMoon2010.jpg', // Moon
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/OSIRIS_Mars_true_color.jpg/250px-OSIRIS_Mars_true_color.jpg', // Mars
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Jupiter_and_its_shrunken_Great_Red_Spot.jpg/250px-Jupiter_and_its_shrunken_Great_Red_Spot.jpg', // Jupiter
+            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Saturn_during_Equinox.jpg/250px-Saturn_during_Equinox.jpg', // Saturn
+            'https://upload.wikimedia.org/wikipedia/commons/3/3d/Uranus_as_seen_by_Voyager_2_%2834994015060%29.png', // Uranus
+            'https://upload.wikimedia.org/wikipedia/commons/5/56/Neptune_-_Voyager_2_%2829347980845%29_flatten_high_quality.jpg', // Neptune
+        ];
+
+        // --- Utility Functions ---
+        function showLoading() {
+            DOM.loadingSpinner.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            DOM.loadingSpinner.classList.add('hidden');
+        }
+
+        function showMessage(msg, type = 'info') {
+            DOM.messageBoxContent.textContent = msg;
+            DOM.messageBoxTitle.textContent = type === 'error' ? 'Error' : 'Info';
+            DOM.messageBoxTitle.className = `text-lg font-semibold mb-4 ${type === 'error' ? 'text-red-700' : 'text-blue-700'}`;
+            DOM.messageBoxClose.className = `px-4 py-2 rounded-md text-white font-medium ${type === 'error' ? 'bg-red-500' : 'bg-blue-500'} hover:opacity-90 transition-opacity`;
+            DOM.messageBoxClose.textContent = 'Close';
+            DOM.messageBoxContainer.classList.remove('hidden');
+        }
+
+        function closeMessage() {
+            DOM.messageBoxContainer.classList.add('hidden');
+        }
+
+        function calculateRank(totalReps) {
+            if (totalReps >= 10001) {
+                return { name: 'GRAND MASTER', icon: '🏆' };
+            } else if (totalReps >= 5001) {
+                return { name: 'Emerald', icon: '💎' };
+            } else if (totalReps >= 1001) {
+                return { name: 'Diamond', icon: '✨' };
+            } else {
+                return { name: 'Copper', icon: '🥉' };
+            }
+        }
+
+        function calculatePersonalRecords(workouts) {
+            const prs = {};
+            workouts.forEach(workout => {
+                const name = workout.workoutName.toLowerCase();
+                if (!prs[name]) {
+                    prs[name] = { maxReps: 0, maxWeight: 0 };
+                }
+                if (workout.reps > prs[name].maxReps) {
+                    prs[name].maxReps = workout.reps;
+                }
+                if (workout.weight && workout.weight > prs[name].maxWeight) {
+                    prs[name].maxWeight = workout.weight;
+                }
+            });
+            personalRecords = prs; // Update global state
+        }
+
+        // --- Firebase Initialization ---
+        async function initializeFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                storage = getStorage(app);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        await fetchOrCreateUserProfile();
+                        await setupRealtimeListeners();
+                    } else {
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (error) {
+                            console.error("Error signing in:", error);
+                            showMessage(`Failed to sign in: ${error.message}`, 'error');
+                            hideLoading();
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                showMessage(`Failed to initialize app: ${error.message}`, 'error');
+                hideLoading();
+            }
+        }
+
+        async function fetchOrCreateUserProfile() {
+            showLoading();
+            const userDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+            onSnapshot(userDocRef, async (docSnap) => {
+                if (docSnap.exists()) {
+                    currentUserProfile = docSnap.data();
+                } else {
+                    const newProfile = {
+                        userId: userId,
+                        displayName: `User${userId.substring(0, 8)}`,
+                        friends: [],
+                        totalReps: 0,
+                        rank: calculateRank(0).name,
+                        profilePhotoURL: planetImages[0],
+                        createdAt: serverTimestamp(),
+                    };
+                    await setDoc(userDocRef, newProfile);
+                    currentUserProfile = newProfile;
+                }
+                renderView(currentView); // Re-render current view with updated profile
+                hideLoading();
+            }, (error) => {
+                console.error("Error fetching user profile:", error);
+                showMessage(`Failed to load profile: ${error.message}`, 'error');
+                hideLoading();
+            });
+        }
+
+        async function setupRealtimeListeners() {
+            // Workouts Listener
+            const workoutsCollectionRef = collection(db, `artifacts/${appId}/public/data/users/${userId}/workouts`);
+            onSnapshot(workoutsCollectionRef, (snapshot) => {
+                userWorkouts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                userWorkouts.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+                calculatePersonalRecords(userWorkouts);
+                if (currentView === 'workouts' || currentView === 'profile') renderView(currentView); // Re-render if on relevant view
+            }, (error) => {
+                console.error("Error fetching workouts:", error);
+                showMessage(`Failed to load workouts: ${error.message}`, 'error');
+            });
+
+            // Friends Listener (for friend profiles)
+            if (currentUserProfile && currentUserProfile.friends && currentUserProfile.friends.length > 0) {
+                const friendsQuery = query(
+                    collection(db, `artifacts/${appId}/public/data/users`),
+                    where("userId", "in", currentUserProfile.friends)
+                );
+                onSnapshot(friendsQuery, (snapshot) => {
+                    friends = snapshot.docs.map(doc => doc.data());
+                    if (currentView === 'friends' || currentView === 'leaderboard' || currentView === 'activityFeed') renderView(currentView);
+                }, (error) => {
+                    console.error("Error fetching friends:", error);
+                    showMessage(`Failed to load friends: ${error.message}`, 'error');
+                });
+            } else {
+                friends = [];
+                if (currentView === 'friends' || currentView === 'leaderboard' || currentView === 'activityFeed') renderView(currentView);
+            }
+
+
+            // Friend Requests Listeners
+            const requestsCollectionRef = collection(db, `artifacts/${appId}/public/data/friendRequests`);
+            const incomingQuery = query(requestsCollectionRef, where("receiverId", "==", userId), where("status", "==", "pending"));
+            onSnapshot(incomingQuery, (snapshot) => {
+                incomingFriendRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (currentView === 'friends') renderView(currentView);
+            }, (error) => {
+                console.error("Error fetching incoming friend requests:", error);
+                showMessage(`Failed to load incoming requests: ${error.message}`, 'error');
+            });
+
+            const outgoingQuery = query(requestsCollectionRef, where("senderId", "==", userId), where("status", "==", "pending"));
+            onSnapshot(outgoingQuery, (snapshot) => {
+                outgoingFriendRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (currentView === 'friends') renderView(currentView);
+            }, (error) => {
+                console.error("Error fetching outgoing friend requests:", error);
+                showMessage(`Failed to load outgoing requests: ${error.message}`, 'error');
+            });
+
+            // Activity Feed Listener
+            const activityFeedCollectionRef = collection(db, `artifacts/${appId}/public/data/activityFeed`);
+            const friendAndSelfIds = [...friends.map(f => f.userId), userId].filter(Boolean);
+            if (friendAndSelfIds.length > 0) {
+                const activityQuery = query(activityFeedCollectionRef, where("userId", "in", friendAndSelfIds));
+                onSnapshot(activityQuery, (snapshot) => {
+                    activityFeed = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    activityFeed.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+                    if (currentView === 'activityFeed') renderView(currentView);
+                }, (error) => {
+                    console.error("Error fetching activity feed:", error);
+                    showMessage(`Failed to load activity feed: ${error.message}`, 'error');
+                });
+            } else {
+                activityFeed = [];
+                if (currentView === 'activityFeed') renderView(currentView);
+            }
+
+            // All Users for Leaderboard Listener (only friends and self)
+            const usersCollectionRef = collection(db, `artifacts/${appId}/public/data/users`);
+            const leaderboardUserIds = [...(currentUserProfile ? currentUserProfile.friends : []), userId].filter(Boolean);
+            if (leaderboardUserIds.length > 0) {
+                const leaderboardQuery = query(usersCollectionRef, where("userId", "in", leaderboardUserIds));
+                onSnapshot(leaderboardQuery, (snapshot) => {
+                    allUsersData = snapshot.docs.map(doc => doc.data());
+                    allUsersData.sort((a, b) => (b.totalReps || 0) - (a.totalReps || 0));
+                    if (currentView === 'leaderboard') renderView(currentView);
+                }, (error) => {
+                    console.error("Error fetching users for leaderboard:", error);
+                    showMessage(`Failed to load leaderboard data: ${error.message}`, 'error');
+                });
+            } else {
+                allUsersData = [];
+                if (currentView === 'leaderboard') renderView(currentView);
+            }
+        }
+
+
+        // --- Render Functions ---
+        function renderView(viewName) {
+            currentView = viewName;
+            DOM.mainContent.innerHTML = ''; // Clear existing content
+
+            // Reset active nav button styles
+            [DOM.navProfile, DOM.navFriends, DOM.navWorkouts, DOM.navLeaderboard, DOM.navActivityFeed].forEach(btn => {
+                btn.classList.remove('bg-white', 'text-blue-600', 'shadow-md');
+                btn.classList.add('text-white', 'hover:bg-blue-700', 'hover:shadow-md');
+            });
+
+            // Set active nav button style
+            const activeNavButton = document.getElementById(`nav-${viewName}`);
+            if (activeNavButton) {
+                activeNavButton.classList.add('bg-white', 'text-blue-600', 'shadow-md');
+                activeNavButton.classList.remove('text-white', 'hover:bg-blue-700', 'hover:shadow-md');
+            }
+
+
+            if (!currentUserProfile) {
+                DOM.mainContent.innerHTML = `<p class="text-center text-xl text-white">Loading profile...</p>`;
+                return;
+            }
+
+            switch (viewName) {
+                case 'profile':
+                    renderProfileView();
+                    break;
+                case 'friends':
+                    renderFriendsView();
+                    break;
+                case 'workouts':
+                    renderWorkoutsView();
+                    break;
+                case 'leaderboard':
+                    renderLeaderboardView();
+                    break;
+                case 'activityFeed':
+                    renderActivityFeedView();
+                    break;
+                default:
+                    renderProfileView();
+            }
+        }
+
+        function renderProfileView() {
+            const userRank = calculateRank(currentUserProfile.totalReps || 0);
+            DOM.mainContent.innerHTML = `
+                <div class="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 text-gray-800">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">Your Profile</h2>
+                    <div class="space-y-4">
+                        <!-- Profile Picture Section -->
+                        <div class="flex flex-col items-center mb-6">
+                            <img id="profile-photo"
+                                src="${currentUserProfile.profilePhotoURL || planetImages[0]}"
+                                alt="Profile"
+                                class="w-24 h-24 rounded-full object-cover border-4 border-blue-500 shadow-md"
+                                onerror="this.onerror=null;this.src='${planetImages[0]}';"
+                            />
+                            <div class="mt-4 flex flex-col items-center space-y-2">
+                                <button id="toggle-planet-selection" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-md">
+                                    ${showPlanetSelection ? 'Hide Planet/Moon Selection' : 'Choose Planet/Moon'}
+                                </button>
+                                <div id="planet-selection-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-4 max-w-xs ${showPlanetSelection ? '' : 'hidden'}">
+                                    ${planetImages.map((imageUrl, index) => `
+                                        <img
+                                            src="${imageUrl}"
+                                            alt="Planet ${index + 1}"
+                                            class="w-16 h-16 rounded-full object-cover cursor-pointer border-2 transition-all duration-200
+                                            ${currentUserProfile.profilePhotoURL === imageUrl ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-300 hover:border-blue-400'}"
+                                            data-image-url="${imageUrl}"
+                                        />
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-lg text-gray-700 flex items-center">
+                            <span class="font-semibold text-gray-900 mr-2">Display Name:</span>
+                            <span id="display-name-text">${currentUserProfile.displayName}</span>
+                            <input type="text" id="edit-display-name-input" value="${currentUserProfile.displayName}" class="p-2 border border-gray-300 rounded-md flex-grow text-gray-800 hidden" />
+                            <button id="edit-display-name-btn" class="ml-4 px-3 py-1 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors">
+                                Edit
+                            </button>
+                            <button id="save-display-name-btn" class="ml-4 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors hidden">
+                                Save
+                            </button>
+                        </p>
+                        <p class="text-lg text-gray-700 flex items-center break-all">
+                            <span class="font-semibold text-gray-900">Your User ID:</span>
+                            <code class="bg-gray-100 p-1 rounded text-sm mx-2">
+                                ${currentUserProfile.userId.substring(0, 8)}...
+                            </code>
+                            <button id="copy-user-id-btn" class="px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm">
+                                Copy ID
+                            </button>
+                        </p>
+                        <p class="text-lg text-gray-700">
+                            <span class="font-semibold text-gray-900">Friends Count:</span> ${currentUserProfile.friends ? currentUserProfile.friends.length : 0}
+                        </p>
+                        <p class="text-lg text-gray-700">
+                            <span class="font-semibold text-gray-900">Total Reps:</span> ${currentUserProfile.totalReps || 0}
+                        </p>
+                        <p class="text-xl font-bold text-gray-900 flex items-center">
+                            <span class="font-semibold text-gray-900">Your Rank:</span>
+                            <span class="ml-2 text-blue-700 ${userRank.name === 'GRAND MASTER' ? 'text-purple-700' : ''}">
+                                ${userRank.icon} ${userRank.name}
+                            </span>
+                        </p>
+                        <div class="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <h3 class="text-xl font-semibold text-blue-800 mb-2">Your Personal Records</h3>
+                            ${Object.keys(personalRecords).length === 0 ? `
+                                <p class="text-blue-700 italic">Log some workouts to see your personal records here!</p>
+                            ` : `
+                                <ul class="list-disc list-inside text-blue-700">
+                                    ${Object.entries(personalRecords).map(([workoutName, pr]) => `
+                                        <li class="mb-1">
+                                            <span class="font-semibold capitalize">${workoutName}:</span> Max Reps: ${pr.maxReps}
+                                            ${pr.maxWeight > 0 ? `, Max Weight: ${pr.maxWeight} LBS` : ''}
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `;
+            addProfileEventListeners();
+        }
+
+        function addProfileEventListeners() {
+            document.getElementById('toggle-planet-selection').addEventListener('click', () => {
+                showPlanetSelection = !showPlanetSelection;
+                renderView('profile'); // Re-render to show/hide grid
+            });
+
+            document.querySelectorAll('#planet-selection-grid img').forEach(img => {
+                img.addEventListener('click', (e) => selectProfilePicture(e.target.dataset.imageUrl));
+            });
+
+            const displayNameText = document.getElementById('display-name-text');
+            const editDisplayNameInput = document.getElementById('edit-display-name-input');
+            const editDisplayNameBtn = document.getElementById('edit-display-name-btn');
+            const saveDisplayNameBtn = document.getElementById('save-display-name-btn');
+
+            let isEditingDisplayName = false; // Internal state for this view
+
+            editDisplayNameBtn.addEventListener('click', () => {
+                isEditingDisplayName = true;
+                displayNameText.classList.add('hidden');
+                editDisplayNameInput.classList.remove('hidden');
+                editDisplayNameBtn.classList.add('hidden');
+                saveDisplayNameBtn.classList.remove('hidden');
+                editDisplayNameInput.focus();
+            });
+
+            saveDisplayNameBtn.addEventListener('click', async () => {
+                const newDisplayName = editDisplayNameInput.value.trim();
+                if (!newDisplayName) {
+                    showMessage("Display name cannot be empty.", 'error');
+                    return;
+                }
+                if (newDisplayName === currentUserProfile.displayName) {
+                    showMessage("Display name is already the same.", 'info');
+                    isEditingDisplayName = false;
+                    renderView('profile');
+                    return;
+                }
+
+                showLoading();
+                try {
+                    const userDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                    const oldDisplayName = currentUserProfile.displayName;
+                    await updateDoc(userDocRef, {
+                        displayName: newDisplayName
+                    });
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                        userId: userId,
+                        displayName: newDisplayName,
+                        eventType: 'displayname_changed',
+                        details: { oldName: oldDisplayName, newName: newDisplayName },
+                        timestamp: serverTimestamp(),
+                    });
+                    showMessage("Display name updated successfully!", 'info');
+                    isEditingDisplayName = false;
+                    renderView('profile'); // Re-render to show updated name
+                } catch (error) {
+                    console.error("Error updating display name:", error);
+                    showMessage(`Failed to update display name: ${error.message}`, 'error');
+                } finally {
+                    hideLoading();
+                }
+            });
+
+            document.getElementById('copy-user-id-btn').addEventListener('click', copyUserIdToClipboard);
+        }
+
+        async function selectProfilePicture(imageUrl) {
+            showLoading();
+            try {
+                const userDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                await updateDoc(userDocRef, {
+                    profilePhotoURL: imageUrl
+                });
+                showMessage("Profile picture updated successfully!", 'info');
+                showPlanetSelection = false; // Hide selection after choosing
+                renderView('profile');
+            } catch (error) {
+                console.error("Error updating profile picture:", error);
+                showMessage(`Failed to update picture: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function copyUserIdToClipboard() {
+            if (currentUserProfile && currentUserProfile.userId) {
+                const tempInput = document.createElement('textarea');
+                tempInput.value = currentUserProfile.userId;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                try {
+                    document.execCommand('copy');
+                    showMessage("User ID copied to clipboard!", 'info');
+                } catch (err) {
+                    console.error('Failed to copy User ID:', err);
+                    showMessage("Failed to copy User ID. Please try again.", 'error');
+                } finally {
+                    document.body.removeChild(tempInput);
+                }
+            }
+        }
+
+        function renderFriendsView() {
+            DOM.mainContent.innerHTML = `
+                <div class="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 text-gray-800">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">Your Friends</h2>
+
+                    <!-- Send Friend Request Section -->
+                    <div class="mb-8 p-4 bg-green-50 rounded-lg border border-green-200">
+                        <h3 class="text-xl font-semibold text-green-800 mb-3">Send Friend Request</h3>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <input
+                                type="text"
+                                id="friendRequestIdInput"
+                                placeholder="Enter friend's User ID (full ID)"
+                                class="flex-grow p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
+                            />
+                            <button id="send-friend-request-btn" class="px-6 py-3 bg-green-600 text-white font-medium rounded-md hover:bg-green-700 transition-colors shadow-md">
+                                Send Request
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Incoming Friend Requests -->
+                    <div class="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h3 class="text-xl font-semibold text-blue-800 mb-3">Incoming Friend Requests (${incomingFriendRequests.length})</h3>
+                        ${incomingFriendRequests.length === 0 ? `
+                            <p class="text-blue-700 italic">No pending friend requests.</p>
+                        ` : `
+                            <ul class="space-y-2">
+                                ${incomingFriendRequests.map(request => `
+                                    <li class="flex items-center justify-between bg-blue-100 p-3 rounded-md shadow-sm">
+                                        <p class="text-gray-900">
+                                            <span class="font-semibold">${request.senderDisplayName}</span> wants to be your friend!
+                                        </p>
+                                        <div class="flex space-x-2">
+                                            <button data-request-id="${request.id}" data-sender-id="${request.senderId}" class="accept-friend-request-btn px-3 py-1 bg-green-500 text-white text-sm rounded-md hover:bg-green-600 transition-colors">
+                                                Accept
+                                            </button>
+                                            <button data-request-id="${request.id}" class="reject-friend-request-btn px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition-colors">
+                                                Reject
+                                            </button>
+                                        </div>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        `}
+                    </div>
+
+                    <!-- Outgoing Friend Requests (Optional) -->
+                    <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Outgoing Friend Requests (${outgoingFriendRequests.length})</h3>
+                        ${outgoingFriendRequests.length === 0 ? `
+                            <p class="text-gray-600 italic">No pending outgoing friend requests.</p>
+                        ` : `
+                            <ul class="space-y-2">
+                                ${outgoingFriendRequests.map(request => `
+                                    <li class="flex items-center justify-between bg-gray-100 p-3 rounded-md shadow-sm">
+                                        <p class="text-gray-900">
+                                            Request sent to <span class="font-semibold">${request.receiverId.substring(0, 8)}...</span>
+                                        </p>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        `}
+                    </div>
+
+                    <!-- Friends List -->
+                    <h3 class="text-2xl font-semibold text-gray-800 mb-4">Current Friends (${friends.length})</h3>
+                    ${friends.length === 0 ? `
+                        <p class="text-gray-600 italic">You don't have any friends yet. Send a request!</p>
+                    ` : `
+                        <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${friends.map((friend) => `
+                                <li class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200 flex items-center justify-between">
+                                    <div>
+                                        <p class="text-lg font-semibold text-gray-900">${friend.displayName}</p>
+                                        <p class="text-sm text-gray-600 break-all">ID: ${friend.userId.substring(0, 8)}...</p>
+                                    </div>
+                                    <button data-friend-id="${friend.userId}" class="remove-friend-btn ml-4 px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition-colors">
+                                        Remove
+                                    </button>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+            addFriendsEventListeners();
+        }
+
+        function addFriendsEventListeners() {
+            document.getElementById('send-friend-request-btn').addEventListener('click', sendFriendRequest);
+            document.querySelectorAll('.accept-friend-request-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const requestId = e.target.dataset.requestId;
+                    const senderId = e.target.dataset.senderId;
+                    acceptFriendRequest(requestId, senderId);
+                });
+            });
+            document.querySelectorAll('.reject-friend-request-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const requestId = e.target.dataset.requestId;
+                    rejectFriendRequest(requestId);
+                });
+            });
+            document.querySelectorAll('.remove-friend-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const friendId = e.target.dataset.friendId;
+                    removeFriend(friendId);
+                });
+            });
+        }
+
+        async function sendFriendRequest() {
+            const receiverId = document.getElementById('friendRequestIdInput').value.trim();
+            if (!db || !userId || !currentUserProfile || !receiverId) {
+                showMessage("Invalid recipient ID or user not authenticated.", 'error');
+                return;
+            }
+            if (receiverId === userId) {
+                showMessage("You cannot send a friend request to yourself.", 'error');
+                return;
+            }
+
+            showLoading();
+            try {
+                const receiverDocRef = doc(db, `artifacts/${appId}/public/data/users`, receiverId);
+                const receiverDocSnap = await getDoc(receiverDocRef);
+                if (!receiverDocSnap.exists()) {
+                    showMessage("User not found with that ID.", 'error');
+                    hideLoading();
+                    return;
+                }
+
+                if (currentUserProfile.friends.includes(receiverId)) {
+                    showMessage("You are already friends with this user.", 'info');
+                    hideLoading();
+                    return;
+                }
+
+                const existingOutgoingQuery = query(
+                    collection(db, `artifacts/${appId}/public/data/friendRequests`),
+                    where("senderId", "==", userId),
+                    where("receiverId", "==", receiverId),
+                    where("status", "==", "pending")
+                );
+                const existingOutgoingSnap = await getDocs(existingOutgoingQuery);
+                if (!existingOutgoingSnap.empty) {
+                    showMessage("You have already sent a friend request to this user.", 'info');
+                    hideLoading();
+                    return;
+                }
+
+                const existingIncomingQuery = query(
+                    collection(db, `artifacts/${appId}/public/data/friendRequests`),
+                    where("senderId", "==", receiverId),
+                    where("receiverId", "==", userId),
+                    where("status", "==", "pending")
+                );
+                const existingIncomingSnap = await getDocs(existingIncomingQuery);
+                if (!existingIncomingSnap.empty) {
+                    showMessage("This user has already sent you a friend request. Please check your incoming requests.", 'info');
+                    hideLoading();
+                    return;
+                }
+
+                await addDoc(collection(db, `artifacts/${appId}/public/data/friendRequests`), {
+                    senderId: userId,
+                    senderDisplayName: currentUserProfile.displayName,
+                    receiverId: receiverId,
+                    status: 'pending',
+                    createdAt: serverTimestamp(),
+                });
+                showMessage(`Friend request sent to ${receiverDocSnap.data().displayName}!`, 'info');
+                document.getElementById('friendRequestIdInput').value = '';
+            } catch (error) {
+                console.error("Error sending friend request:", error);
+                showMessage(`Failed to send friend request: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function acceptFriendRequest(requestId, senderId) {
+            if (!db || !userId) {
+                showMessage("Database not ready or user not authenticated.", 'error');
+                return;
+            }
+            showLoading();
+            try {
+                const requestDocRef = doc(db, `artifacts/${appId}/public/data/friendRequests`, requestId);
+                await updateDoc(requestDocRef, { status: 'accepted' });
+
+                const currentUserDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                await updateDoc(currentUserDocRef, { friends: arrayUnion(senderId) });
+
+                const senderUserDocRef = doc(db, `artifacts/${appId}/public/data/users`, senderId);
+                await updateDoc(senderUserDocRef, { friends: arrayUnion(userId) });
+
+                await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                    userId: userId,
+                    displayName: currentUserProfile.displayName,
+                    eventType: 'new_friendship',
+                    details: { friendId: senderId, friendDisplayName: (await getDoc(senderUserDocRef)).data().displayName },
+                    timestamp: serverTimestamp(),
+                });
+
+                showMessage("Friend request accepted!", 'info');
+            } catch (error) {
+                console.error("Error accepting friend request:", error);
+                showMessage(`Failed to accept friend request: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function rejectFriendRequest(requestId) {
+            if (!db) {
+                showMessage("Database not ready.", 'error');
+                return;
+            }
+            showLoading();
+            try {
+                const requestDocRef = doc(db, `artifacts/${appId}/public/data/friendRequests`, requestId);
+                await updateDoc(requestDocRef, { status: 'rejected' });
+                showMessage("Friend request rejected.", 'info');
+            } catch (error) {
+                console.error("Error rejecting friend request:", error);
+                showMessage(`Failed to reject friend request: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function removeFriend(friendId) {
+            if (!db || !userId || !currentUserProfile) {
+                showMessage("Database not ready or user not authenticated.", 'error');
+                return;
+            }
+            showLoading();
+            try {
+                const currentUserDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                await updateDoc(currentUserDocRef, { friends: arrayRemove(friendId) });
+
+                const friendUserDocRef = doc(db, `artifacts/${appId}/public/data/users`, friendId);
+                await updateDoc(friendUserDocRef, { friends: arrayRemove(userId) });
+
+                showMessage("Friend removed successfully!", 'info');
+            } catch (error) {
+                console.error("Error removing friend:", error);
+                showMessage(`Failed to remove friend: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function renderWorkoutsView() {
+            DOM.mainContent.innerHTML = `
+                <div class="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 text-gray-800">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">Workouts & Rankings</h2>
+
+                    <!-- Log New Workout Section -->
+                    <div class="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h3 class="text-xl font-semibold text-blue-800 mb-3">Log New Workout</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label for="workoutName" class="block text-sm font-medium text-gray-700 mb-1">Workout Name</label>
+                                <input
+                                    type="text"
+                                    id="newWorkoutName"
+                                    placeholder="e.g., Bench Press, Squats"
+                                    class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
+                                />
+                            </div>
+                            <div>
+                                <label for="reps" class="block text-sm font-medium text-gray-700 mb-1">Reps</label>
+                                <input
+                                    type="number"
+                                    id="newWorkoutReps"
+                                    placeholder="e.g., 10"
+                                    min="1"
+                                    class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
+                                />
+                            </div>
+                            <div>
+                                <label for="weight" class="block text-sm font-medium text-gray-700 mb-1">Weight (LBS, optional)</label>
+                                <input
+                                    type="number"
+                                    id="newWorkoutWeight"
+                                    placeholder="e.g., 130"
+                                    min="0"
+                                    step="0.1"
+                                    class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
+                                />
+                            </div>
+                        </div>
+                        <button id="log-workout-btn" class="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-md">
+                            Log Workout
+                        </button>
+                    </div>
+
+                    <!-- Personal Records Section -->
+                    <div class="mb-8 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                        <h3 class="text-xl font-semibold text-purple-800 mb-3">Your Personal Records</h3>
+                        ${Object.keys(personalRecords).length === 0 ? `
+                            <p class="text-purple-700 italic">Log some workouts to see your personal records here!</p>
+                        ` : `
+                            <ul class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-purple-700">
+                                ${Object.entries(personalRecords).map(([workoutName, pr]) => `
+                                    <li class="mb-1">
+                                        <span class="font-semibold capitalize">${workoutName}:</span>
+                                        <p class="text-sm">Max Reps: <span class="font-bold">${pr.maxReps}</span></p>
+                                        ${pr.maxWeight > 0 ? `<p class="text-sm">Max Weight: <span class="font-bold">${pr.maxWeight} LBS</span></p>` : ''}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        `}
+                    </div>
+
+                    <!-- Past Workouts List -->
+                    <h3 class="text-2xl font-semibold text-gray-800 mb-4">Past Workouts (${userWorkouts.length})</h3>
+                    ${userWorkouts.length === 0 ? `
+                        <p class="text-gray-600 italic">You haven't logged any workouts yet.</p>
+                    ` : `
+                        <ul class="space-y-3">
+                            ${userWorkouts.map((workout) => `
+                                <li class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200 flex items-center justify-between">
+                                    <div>
+                                        <p class="text-lg font-semibold text-gray-900 capitalize">${workout.workoutName}</p>
+                                        <p class="text-gray-700">Reps: ${workout.reps}</p>
+                                        ${workout.weight > 0 ? `<p class="text-gray-700">Weight: ${workout.weight} LBS</p>` : ''}
+                                        <p class="text-sm text-gray-500">
+                                            Logged on: ${workout.timestamp ? new Date(workout.timestamp.toDate()).toLocaleString() : 'N/A'}
+                                        </p>
+                                    </div>
+                                    <button data-workout-id="${workout.id}" data-reps="${workout.reps}" class="delete-workout-btn ml-4 px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition-colors">
+                                        Delete
+                                    </button>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+            addWorkoutsEventListeners();
+        }
+
+        function addWorkoutsEventListeners() {
+            document.getElementById('log-workout-btn').addEventListener('click', logWorkout);
+            document.querySelectorAll('.delete-workout-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const workoutId = e.target.dataset.workoutId;
+                    const repsToDelete = parseInt(e.target.dataset.reps);
+                    deleteWorkout(workoutId, repsToDelete);
+                });
+            });
+        }
+
+        async function logWorkout() {
+            const newWorkoutName = document.getElementById('newWorkoutName').value.trim();
+            const newWorkoutReps = document.getElementById('newWorkoutReps').value;
+            const newWorkoutWeight = document.getElementById('newWorkoutWeight').value;
+
+            if (!db || !userId || !currentUserProfile) {
+                showMessage("Database not ready or user not authenticated.", 'error');
+                return;
+            }
+            if (!newWorkoutName || !newWorkoutReps) {
+                showMessage("Workout name and reps are required.", 'error');
+                return;
+            }
+            const reps = parseInt(newWorkoutReps);
+            const weight = newWorkoutWeight ? parseFloat(newWorkoutWeight) : 0;
+
+            if (isNaN(reps) || reps <= 0) {
+                showMessage("Reps must be a positive number.", 'error');
+                return;
+            }
+            if (newWorkoutWeight && (isNaN(weight) || weight < 0)) {
+                showMessage("Weight must be a non-negative number.", 'error');
+                return;
+            }
+
+            showLoading();
+            try {
+                const workoutsCollectionRef = collection(db, `artifacts/${appId}/public/data/users/${userId}/workouts`);
+                await addDoc(workoutsCollectionRef, {
+                    workoutName: newWorkoutName,
+                    reps: reps,
+                    weight: weight,
+                    timestamp: serverTimestamp(),
+                    userId: userId,
+                });
+
+                const newTotalReps = (currentUserProfile.totalReps || 0) + reps;
+                const oldRankName = currentUserProfile.rank;
+                const newRankInfo = calculateRank(newTotalReps);
+                const newRankName = newRankInfo.name;
+
+                const userDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                await updateDoc(userDocRef, {
+                    totalReps: newTotalReps,
+                    rank: newRankName,
+                });
+
+                await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                    userId: userId,
+                    displayName: currentUserProfile.displayName,
+                    eventType: 'workout_logged',
+                    details: { workoutName: newWorkoutName, reps: reps, weight: weight },
+                    timestamp: serverTimestamp(),
+                });
+
+                const currentPRs = personalRecords[newWorkoutName.toLowerCase()] || { maxReps: 0, maxWeight: 0 };
+                if (reps > currentPRs.maxReps) {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                        userId: userId,
+                        displayName: currentUserProfile.displayName,
+                        eventType: 'pr_achieved',
+                        details: { workoutName: newWorkoutName, metric: 'reps', oldValue: currentPRs.maxReps, newValue: reps },
+                        timestamp: serverTimestamp(),
+                    });
+                }
+                if (weight > 0 && weight > currentPRs.maxWeight) {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                        userId: userId,
+                        displayName: currentUserProfile.displayName,
+                        eventType: 'pr_achieved',
+                        details: { workoutName: newWorkoutName, metric: 'weight', oldValue: currentPRs.maxWeight, newValue: weight },
+                        timestamp: serverTimestamp(),
+                    });
+                }
+
+                if (oldRankName !== newRankName) {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                        userId: userId,
+                        displayName: currentUserProfile.displayName,
+                        eventType: 'rank_changed',
+                        details: { oldRank: oldRankName, newRank: newRankName },
+                        timestamp: serverTimestamp(),
+                    });
+                }
+
+                showMessage("Workout logged successfully!", 'info');
+                document.getElementById('newWorkoutName').value = '';
+                document.getElementById('newWorkoutReps').value = '';
+                document.getElementById('newWorkoutWeight').value = '';
+            } catch (error) {
+                console.error("Error logging workout:", error);
+                showMessage(`Failed to log workout: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteWorkout(workoutId, repsToDelete) {
+            if (!db || !userId || !currentUserProfile) {
+                showMessage("Database not ready or user not authenticated.", 'error');
+                return;
+            }
+
+            showLoading();
+            try {
+                const workoutDocRef = doc(db, `artifacts/${appId}/public/data/users/${userId}/workouts`, workoutId);
+                await deleteDoc(workoutDocRef);
+
+                const newTotalReps = Math.max(0, (currentUserProfile.totalReps || 0) - repsToDelete);
+                const oldRankName = currentUserProfile.rank;
+                const newRankInfo = calculateRank(newTotalReps);
+                const newRankName = newRankInfo.name;
+
+                const userDocRef = doc(db, `artifacts/${appId}/public/data/users`, userId);
+                await updateDoc(userDocRef, {
+                    totalReps: newTotalReps,
+                    rank: newRankName,
+                });
+
+                await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                    userId: userId,
+                    displayName: currentUserProfile.displayName,
+                    eventType: 'workout_deleted',
+                    details: { repsDeleted: repsToDelete },
+                    timestamp: serverTimestamp(),
+                });
+
+                if (oldRankName !== newRankName) {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/activityFeed`), {
+                        userId: userId,
+                        displayName: currentUserProfile.displayName,
+                        eventType: 'rank_changed',
+                        details: { oldRank: oldRankName, newRank: newRankName },
+                        timestamp: serverTimestamp(),
+                    });
+                }
+
+                showMessage("Workout deleted successfully!", 'info');
+            } catch (error) {
+                console.error("Error deleting workout:", error);
+                showMessage(`Failed to delete workout: ${error.message}`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function renderLeaderboardView() {
+            const friendsLeaderboardData = [...allUsersData].sort((a, b) => (b.totalReps || 0) - (a.totalReps || 0)); // Ensure sorted
+            DOM.mainContent.innerHTML = `
+                <div class="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 text-gray-800">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">Friends Leaderboard</h2>
+
+                    ${friendsLeaderboardData.length === 0 ? `
+                        <p class="text-gray-600 italic">No users on your friends leaderboard yet. Add some friends or log workouts!</p>
+                    ` : `
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white rounded-lg shadow-md">
+                                <thead>
+                                    <tr class="bg-green-100 text-green-800 uppercase text-sm leading-normal">
+                                        <th class="py-3 px-6 text-left">Rank</th>
+                                        <th class="py-3 px-6 text-left">Display Name</th>
+                                        <th class="py-3 px-6 text-left">Total Reps</th>
+                                        <th class="py-3 px-6 text-left">Tier</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-gray-700 text-sm font-light">
+                                    ${friendsLeaderboardData.map((user, index) => {
+                                        const rankInfo = calculateRank(user.totalReps || 0);
+                                        return `
+                                            <tr class="border-b border-gray-200 hover:bg-gray-100">
+                                                <td class="py-3 px-6 text-left whitespace-nowrap">${index + 1}</td>
+                                                <td class="py-3 px-6 text-left">${user.displayName}</td>
+                                                <td class="py-3 px-6 text-left">${user.totalReps || 0}</td>
+                                                <td class="py-3 px-6 text-left font-semibold flex items-center">
+                                                    ${rankInfo.icon} <span class="ml-1">${rankInfo.name}</span>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderActivityFeedView() {
+            DOM.mainContent.innerHTML = `
+                <div class="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 text-gray-800">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">Activity Feed</h2>
+                    ${activityFeed.length === 0 ? `
+                        <p class="text-gray-600 italic">No recent activity from you or your friends. Log a workout or add friends!</p>
+                    ` : `
+                        <ul class="space-y-4">
+                            ${activityFeed.map((activity) => {
+                                const time = activity.timestamp ? new Date(activity.timestamp.toDate()).toLocaleString() : 'N/A';
+                                const isSelf = activity.userId === userId;
+                                const actor = isSelf ? 'You' : activity.displayName;
+                                let activityContent = '';
+
+                                switch (activity.eventType) {
+                                    case 'workout_logged':
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span> logged a workout: <span class="font-medium capitalize">${activity.details.workoutName}</span> with ${activity.details.reps} reps
+                                                ${activity.details.weight > 0 ? ` and ${activity.details.weight} LBS` : ''}.
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    case 'pr_achieved':
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span> achieved a new Personal Record for <span class="font-medium capitalize">${activity.details.workoutName}</span>!
+                                                New Max ${activity.details.metric}: ${activity.details.newValue} ${activity.details.metric === 'weight' ? 'LBS' : 'reps'}.
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    case 'rank_changed':
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span>'s rank changed from <span class="font-medium">${activity.details.oldRank}</span> to <span class="font-medium">${activity.details.newRank}</span>!
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    case 'new_friendship':
+                                        const friendName = activity.details.friendDisplayName || activity.details.friendId.substring(0,8);
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span> and <span class="font-semibold">${friendName}</span> are now friends!
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    case 'displayname_changed':
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${activity.details.oldName}</span> is now known as <span class="font-semibold">${activity.details.newName}</span>.
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    case 'workout_deleted':
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span> deleted a workout entry. Total reps adjusted.
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                        break;
+                                    default:
+                                        activityContent = `
+                                            <p>
+                                                <span class="font-semibold">${actor}</span> performed an action.
+                                                <span class="text-xs text-gray-500 block mt-1">${time}</span>
+                                            </p>
+                                        `;
+                                }
+                                return `
+                                    <li class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200">
+                                        ${activityContent}
+                                    </li>
+                                `;
+                            }).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+        }
+
+
+        // --- Event Listeners for Navigation ---
+        DOM.navProfile.addEventListener('click', () => renderView('profile'));
+        DOM.navFriends.addEventListener('click', () => renderView('friends'));
+        DOM.navWorkouts.addEventListener('click', () => renderView('workouts'));
+        DOM.navLeaderboard.addEventListener('click', () => renderView('leaderboard'));
+        DOM.navActivityFeed.addEventListener('click', () => renderView('activityFeed'));
+        DOM.messageBoxClose.addEventListener('click', closeMessage);
+
+        // --- Initial Setup on Window Load ---
+        window.onload = () => {
+            DOM.currentYear.textContent = new Date().getFullYear();
+            initializeFirebase();
+            // Initial render will happen after Firebase auth state is determined and profile fetched
+        };
+    </script>
+</body>
+</html>
